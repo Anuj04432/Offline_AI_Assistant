@@ -20,6 +20,8 @@ This project runs **fully offline** using local LLMs — no OpenAI API or intern
 - 🔄 Real-time chat rendering
 - 📱 Responsive design
 - 🔌 Backend-ready architecture
+- 📳 Models-used:-mistral,gemma and ph6
+
 
 ---
 
@@ -32,8 +34,6 @@ This project runs **fully offline** using local LLMs — no OpenAI API or intern
 
 ## Backend
 - Python / Flask  
-or
-- Node.js / Express
 
 ## AI Runtime
 - Ollama
@@ -243,7 +243,7 @@ screenshots/main-ui.png
 - ✅ Multi-chat sessions
 - ✅ Syntax highlighting
 - ✅ Electron desktop app
-
+- ✅️ Multiple devices UI
 ---
 
 # 🛡️ Privacy
