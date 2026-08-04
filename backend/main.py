@@ -24,9 +24,11 @@ OLLAMA_BASE_URL = "http://localhost:11434"
 # sessions = { "session_id": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}] }
 sessions: Dict[str, List[dict]] = {}
 
+DEFAULT_MODEL = "qwen2.5-coder:7b"
+
 class ChatRequest(BaseModel):
     message: str
-    model: Optional[str] = "llama2"
+    model: Optional[str] = DEFAULT_MODEL
     session_id: Optional[str] = None
 
 @app.get("/models")
@@ -38,7 +40,7 @@ async def get_models():
             response.raise_for_status()
             data = response.json()
             models = [model["name"] for model in data.get("models", [])]
-            return {"models": models}
+            return {"models": models, "default_model": DEFAULT_MODEL}
     except Exception as e:
         return {"models": [], "error": str(e)}
 
@@ -64,7 +66,9 @@ async def chat(request: ChatRequest):
     """Send chat message to Ollama with history context"""
     if not request.message:
         raise HTTPException(status_code=400, detail="Message is required")
-    
+
+    model = request.model or DEFAULT_MODEL
+
     session_id = request.session_id
     if not session_id or session_id not in sessions:
         # Create new session if none provided or invalid
@@ -83,7 +87,7 @@ async def chat(request: ChatRequest):
     
     # Build payload using full history
     payload = {
-        "model": request.model,
+        "model": model,
         "messages": [system_msg] + sessions[session_id],
         "stream": False,
         "options": {
