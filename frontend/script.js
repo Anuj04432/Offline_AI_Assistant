@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Preferred default model — used to auto-select if it's available locally
+    const PREFERRED_MODEL = 'qwen2.5-coder:7b';
+
     // DOM Elements
     const messageInput = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
@@ -22,6 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const headerModelTitle = document.getElementById('headerModelTitle');
     const menuToggle = document.getElementById('menuToggle');
     const sidebar = document.getElementById('sidebar');
+    const connectionLed = document.getElementById('connectionLed');
+    const connectionStatus = document.getElementById('connectionStatus');
 
     let currentSessionId = null;
 
@@ -29,11 +34,29 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchModels();
     fetchSessions();
 
+    function setConnectionState(isOnline) {
+        connectionLed.classList.remove('online', 'offline');
+        connectionLed.classList.add(isOnline ? 'online' : 'offline');
+        connectionStatus.textContent = isOnline ? 'ONLINE' : 'OFFLINE';
+    }
+
+    function badgeForModel(name) {
+        const n = name.toLowerCase();
+        if (n.includes('coder')) return 'Code';
+        if (n.includes('qwen')) return 'Fast';
+        if (n.includes('mistral')) return 'Fast';
+        if (n.includes('llama')) return 'Smart';
+        if (n.includes('deepseek')) return 'Reason';
+        if (n.includes('phi')) return 'Light';
+        return 'Default';
+    }
+
     async function fetchModels() {
         try {
             const response = await fetch('http://localhost:8000/models');
             const data = await response.json();
             if (data.models && data.models.length > 0) {
+                setConnectionState(true);
                 modelSelect.innerHTML = '';
                 data.models.forEach(model => {
                     const option = document.createElement('option');
@@ -41,15 +64,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     option.textContent = model;
                     modelSelect.appendChild(option);
                 });
+                // Prefer qwen2.5-coder:7b if it's pulled locally
+                const preferredAvailable = data.models.some(m => m === PREFERRED_MODEL);
+                if (preferredAvailable) {
+                    modelSelect.value = PREFERRED_MODEL;
+                }
                 modelSelect.dispatchEvent(new Event('change'));
             } else {
-                modelSelect.innerHTML = '<option value="">No models found</option>';
-                headerModelTitle.innerHTML = `No Models <span class="model-badge">Error</span>`;
+                setConnectionState(true);
+                modelSelect.innerHTML = '<option value="">no models found</option>';
+                headerModelTitle.innerHTML = `no models <span class="model-badge">pull one</span>`;
             }
         } catch (error) {
             console.error('Error fetching models:', error);
-            modelSelect.innerHTML = '<option value="">Server offline</option>';
-            headerModelTitle.innerHTML = `Offline <span class="model-badge">Error</span>`;
+            setConnectionState(false);
+            modelSelect.innerHTML = '<option value="">server offline</option>';
+            headerModelTitle.innerHTML = `backend offline <span class="model-badge">retry</span>`;
         }
     }
 
@@ -68,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     historyList.appendChild(li);
                 });
             } else {
-                historyList.innerHTML = '<div style="padding:10px; color:#b4b4b4; font-size:12px;">No recent chats</div>';
+                historyList.innerHTML = '<div class="empty-log">No sessions logged yet</div>';
             }
         } catch (error) {
             console.error('Error fetching sessions:', error);
@@ -80,21 +110,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`http://localhost:8000/sessions/${sessionId}`);
             if (!response.ok) return;
             const data = await response.json();
-            
+
             currentSessionId = sessionId;
             welcomeScreen.style.display = 'none';
             messagesWrapper.style.display = 'flex';
             messagesWrapper.innerHTML = '';
-            
+
             data.history.forEach(msg => {
                 // skip system messages
                 if (msg.role !== 'system') {
                     addMessageToUI(msg.role === 'assistant' ? parseMarkdown(msg.content) : msg.content, msg.role);
                 }
             });
-            
+
             fetchSessions(); // refresh active state
-            
+
             if (window.innerWidth <= 768) {
                 sidebar.classList.remove('open');
             }
@@ -105,9 +135,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     modelSelect.addEventListener('change', (e) => {
         const selectedModel = e.target.value;
-        let badge = 'Default';
-        if (selectedModel.includes('mistral')) badge = 'Fast';
-        if (selectedModel.includes('llama')) badge = 'Smart';
+        if (!selectedModel) return;
+        const badge = badgeForModel(selectedModel);
         headerModelTitle.innerHTML = `${selectedModel} <span class="model-badge">${badge}</span>`;
     });
 
@@ -165,12 +194,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function addMessageToUI(content, sender) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${sender}`;
-        const isBot = sender === 'assistant' || sender === 'bot';
-        const avatarIcon = isBot ? '<i class="fa-solid fa-robot"></i>' : 'U';
-        
+        const isAssistant = sender === 'assistant';
+        const avatarLabel = isAssistant ? 'AI' : 'U';
+
         messageDiv.innerHTML = `
             <div class="message-inner">
-                <div class="message-avatar">${avatarIcon}</div>
+                <div class="message-avatar">${avatarLabel}</div>
                 <div class="message-content">${content}</div>
             </div>
         `;
@@ -181,11 +210,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showTypingIndicator() {
         const indicatorDiv = document.createElement('div');
-        indicatorDiv.className = 'message bot typing-msg';
+        indicatorDiv.className = 'message assistant typing-msg';
         indicatorDiv.id = 'typingIndicator';
         indicatorDiv.innerHTML = `
             <div class="message-inner">
-                <div class="message-avatar"><i class="fa-solid fa-robot"></i></div>
+                <div class="message-avatar">AI</div>
                 <div class="message-content">
                     <div class="typing-indicator">
                         <div class="dot"></div><div class="dot"></div><div class="dot"></div>
@@ -201,28 +230,29 @@ document.addEventListener('DOMContentLoaded', () => {
     async function sendMessageToBackend(message) {
         const typingIndicator = showTypingIndicator();
         const selectedModel = modelSelect.value;
-        
+
         let fullMessage = message;
         if (extractedFileText) {
             fullMessage = `[File Content]:\n${extractedFileText}\n\n[User Message]:\n${message}`;
             extractedFileText = "";
             document.getElementById('fileUploadBtn').style.color = '';
         }
-        
+
         try {
             const response = await fetch('http://localhost:8000/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    message: fullMessage, 
+                body: JSON.stringify({
+                    message: fullMessage,
                     model: selectedModel,
-                    session_id: currentSessionId 
+                    session_id: currentSessionId
                 })
             });
-            
+
             const data = await response.json();
             typingIndicator.remove();
-            
+            setConnectionState(true);
+
             if (response.ok) {
                 currentSessionId = data.session_id; // update session id
                 addMessageToUI(parseMarkdown(data.reply), 'assistant');
@@ -232,7 +262,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             typingIndicator.remove();
-            addMessageToUI("Sorry, I could not connect to the backend server. Is it running?", 'assistant');
+            setConnectionState(false);
+            addMessageToUI("Could not reach the local backend. Is it running?", 'assistant');
             console.error('Error:', error);
         }
     }
@@ -265,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!file) return;
         const formData = new FormData();
         formData.append('file', file);
-        fileUploadBtn.style.color = '#10a37f';
+        fileUploadBtn.style.color = 'var(--accent)';
 
         try {
             const response = await fetch('http://localhost:8000/upload', {
@@ -275,14 +306,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             if (response.ok) {
                 extractedFileText = data.extracted_text;
-                addMessageToUI(`File attached: ${file.name}. It will be sent with your next message.`, 'bot');
+                addMessageToUI(`File attached: ${file.name}. It will be sent with your next message.`, 'assistant');
             } else {
-                addMessageToUI(`Failed to process file: ${data.detail}`, 'bot');
+                addMessageToUI(`Failed to process file: ${data.detail}`, 'assistant');
                 fileUploadBtn.style.color = '';
             }
         } catch (error) {
             console.error('File upload error:', error);
-            addMessageToUI("Error connecting to backend for file upload.", 'bot');
+            addMessageToUI("Error connecting to backend for file upload.", 'assistant');
             fileUploadBtn.style.color = '';
         }
         fileInput.value = '';
@@ -290,6 +321,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const voiceBtn = document.getElementById('voiceBtn');
     voiceBtn.addEventListener('click', () => {
-        addMessageToUI("Voice recording activated. (Requires backend integration)", 'bot');
+        addMessageToUI("Voice recording activated. (Requires backend integration)", 'assistant');
     });
 });
