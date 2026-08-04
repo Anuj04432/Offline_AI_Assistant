@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MYCHATBOT</title>
+    <title>LOCAL // Chat Console</title>
     <link rel="stylesheet" href="style.css">
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts: Inter -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- Google Fonts: IBM Plex Sans (body) + IBM Plex Mono (labels/utility) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Highlight.js CSS for Code Blocks -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
     <!-- Marked.js and Highlight.js -->
@@ -19,27 +20,37 @@
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
+
+            <!-- Signal panel: live connection status to the Ollama backend -->
+            <div class="signal-panel">
+                <div class="signal-row">
+                    <span class="led" id="connectionLed"></span>
+                    <span class="signal-label">OLLAMA</span>
+                    <span class="signal-status" id="connectionStatus">CONNECTING</span>
+                </div>
+            </div>
+
             <button class="new-chat-btn" id="newChatBtn">
-                <i class="fa-solid fa-plus"></i> New Chat
+                <i class="fa-solid fa-plus"></i> New chat
             </button>
-            
+
             <div class="sidebar-section">
-                <p class="section-label">Select Model</p>
+                <p class="section-label">▸ model</p>
                 <div class="select-wrapper">
                     <select id="modelSelect">
-                        <option value="">Loading models...</option>
+                        <option value="">loading models…</option>
                     </select>
                     <i class="fa-solid fa-chevron-down select-icon"></i>
                 </div>
             </div>
 
             <div class="chat-history">
-                <p class="section-label">Recent_Chats</p>
+                <p class="section-label">▸ log</p>
                 <ul class="history-list" id="historyList">
-                    <!-- History items will be dynamically loaded here -->
-                    <div style="padding:10px; color:blacķ; font-size:12px;">No recent chats</div>
+                    <div class="empty-log">No sessions logged yet</div>
                 </ul>
             </div>
+
             <div class="sidebar-footer">
                 <div class="user-profile">
                     <div class="avatar">U</div>
@@ -56,7 +67,7 @@
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div class="header-model-title" id="headerModelTitle">
-                    Loading... <span class="model-badge">Default</span>
+                    loading… <span class="model-badge">—</span>
                 </div>
             </header>
 
@@ -64,12 +75,11 @@
             <div class="chat-container" id="chatContainer">
                 <!-- Welcome screen for new chat -->
                 <div class="welcome-screen" id="welcomeScreen">
-                    <div class="welcome-logo">
-                        <i class="fa-solid fa-robot"></i>
-                    </div>
-                    <h1>How can I help you today?</h1>
+                    <div class="welcome-logo">&gt;_</div>
+                    <h1>Local model, no cloud, no leash.</h1>
+                    <p class="welcome-sub">Ask anything — it stays on this machine.</p>
                 </div>
-                
+
                 <!-- Messages will appear here -->
                 <div class="messages-wrapper" id="messagesWrapper" style="display: none;">
                     <!-- Example messages will be added dynamically -->
@@ -79,18 +89,18 @@
             <!-- Input Area -->
             <div class="input-area">
                 <div class="input-wrapper">
-                    <button class="icon-btn" id="fileUploadBtn" title="Upload File">
+                    <button class="icon-btn" id="fileUploadBtn" title="Attach file">
                         <i class="fa-solid fa-paperclip"></i>
                     </button>
-                    <textarea id="messageInput" placeholder="Message ChatGPT..." rows="1"></textarea>
-                    <button class="icon-btn" id="voiceBtn" title="Voice Input">
+                    <textarea id="messageInput" placeholder="Message the local model…" rows="1"></textarea>
+                    <button class="icon-btn" id="voiceBtn" title="Voice input">
                         <i class="fa-solid fa-microphone"></i>
                     </button>
-                    <button class="send-btn" id="sendBtn" disabled>
-                        <i class="fa-solid fa-arrow-up"></i>
+                    <button class="send-btn" id="sendBtn" disabled title="Send">
+                        <span class="send-glyph">&gt;</span>
                     </button>
                 </div>
-                <p class="disclaimer">Offline chatbot may be slow, so keep patience😁</p>
+                <p class="disclaimer">Running fully offline — replies may take a moment.</p>
             </div>
         </main>
     </div>
