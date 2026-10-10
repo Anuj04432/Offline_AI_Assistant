@@ -1,13 +1,44 @@
-# Ignore Python cache files
+# Python Bytecode and Caches
 **/__pycache__/
-
+__pycache__/
+*.py[cod]
 *.pyc
 *.pyo
+*$py.class
+*.so
 
-# Ignore virtual environments
+# Environments
 .venv/
 myvenv/
+env/
+venv/
+ENV/
 
-# Ignore VS Code settings
+# Streamlit Local Cache and Runtime
+.streamlit/
+
+# Database and SQLite artifacts
+*.db
+*.db-shm
+*.db-wal
+localmind.db
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Testing and Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Operating System specific
+.DS_Store
+Thumbs.db
+
+# IDE and Tool settings
 .vscode/
+.idea/
+*.swp
 .aider*
