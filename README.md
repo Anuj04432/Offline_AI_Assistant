@@ -1,65 +1,80 @@
-# 💬 Offline ChatGPT Clone (Ollama + Frontend)
+# 💬 Offline ChatGPT Clone (LocalMind Evolution)
 
-A complete **ChatGPT-like offline AI assistant** powered by **Ollama** and a modern frontend interface.
+A complete **ChatGPT-like offline AI assistant** powered by **Ollama** and a clean, pure Python interface.
 
-This project runs **fully offline** using local LLMs — no OpenAI API or internet connection required after setup.
+This project runs **fully offline** using local LLMs — no external cloud API or internet connection required after setup.
+
+---
+
+## 🔄 Project Evolution: LocalMind (Streamlit Upgrade)
+
+We are upgrading this project in-place to **LocalMind**, transitioning from the initial HTML/CSS/JS frontend to a pure-Python **Streamlit** architecture:
+- **Zero Frontend Hassle**: Pure Python UI with native streaming (`st.write_stream`) and responsive components.
+- **Hardware-Aware Model Recommendations**: Probes your RAM, CPU, and GPU to categorize hardware into tiers (Light/Medium/Strong) and recommend compatible models with traffic-light verdicts (Green/Yellow/Red).
+- **Safe Offline Slash Commands**: Execute administrative actions (`/models`, `/running`, `/unload`, `/system`, `/clear`, `/help`) directly in chat without invoking the LLM.
+- **Persistent SQLite Storage**: Preserves conversation history, searchable logs, and exports to Markdown and JSON.
+- **Performance & Eco Controls**: Customizable personas, generation parameters, Eco Mode, and real-time resource gauges.
+- **Optional Cloud Fallback**: Support for user-provided OpenAI-compatible keys with clear privacy disclaimers and quota alerts.
+- **Legacy Preservation**: The original FastAPI (`backend/`) and web client (`frontend/`) code is retained and will be safely archived to `legacy/` once Phase 1 is validated.
 
 ---
 
 # 🚀 Features
 
-- 🌐 Modern ChatGPT-style UI
+- 🌐 Modern Streamlit & ChatGPT-style UI
 - 🧠 Fully Offline AI using Ollama
-- ⚡ Fast local response generation
-- 🗂️ Chat history sidebar
-- ➕ New Chat support
-<!-- - 🎨 Dark theme interface -->
-- 🤖 Multiple model selection
-- 📎 File upload button (UI)
-- 🎤 Microphone button (UI)
-- 🔄 Real-time chat rendering
+- ⚡ Fast local response generation & live streaming
+- 🗂️ Chat history sidebar with SQLite persistence
+- ➕ New Chat & Clear Chat support
+- 🤖 Multiple model selection & hardware tier recommendations
+- 📎 File upload button (in-context PDF/TXT reading)
+- 🎤 Microphone button (offline Whisper transcription)
+- 🔄 Real-time chat rendering via `st.write_stream`
 - 📱 Responsive design
-- 🔌 Backend-ready architecture
-- 📳 Models-used:-mistral,gemma and ph6
+- 🔌 Backend-ready architecture with clean separation in `core/`
+- 📳 Models used: `qwen2.5-coder`, `mistral`, `gemma`, `phi3`, `llama3`
 
+---
+
+# 📁 Target Project Structure
+
+```bash
+offline_Ai_chatbot/
+├── app.py                 # Streamlit entry point
+├── pages/                 # Multi-page UI (Chat, Hardware & Models, Settings)
+├── core/                  # Pure Python logic (Ollama client, system info, recommender, db)
+├── tests/                 # Automated test suite (pytest)
+├── docs/                  # Architecture, plan, database schema, commands, progress
+│   ├── PLAN.md
+│   ├── AUDIT.md
+│   ├── ARCHITECTURE.md
+│   ├── DATABASE.md
+│   ├── COMMANDS.md
+│   ├── PROGRESS.md
+│   └── phases/
+├── legacy/                # Archived original backend/ and frontend/ (post-Phase 1)
+├── backend/               # Current FastAPI backend (preserved during migration)
+├── frontend/              # Current HTML/JS frontend (preserved during migration)
+├── pyproject.toml
+├── requirements.txt
+└── README.md
+```
 
 ---
 
 # 🧠 Tech Stack
 
-## Frontend
-- HTML5
-- CSS3
-- JavaScript
+## Frontend (Upgraded)
+- Streamlit (Pure Python UI)
 
-## Backend
-- Python / Flask  
+## Legacy Frontend (Preserved)
+- HTML5, CSS3, JavaScript
+
+## Core Logic & Backend
+- Python 3.12+ (FastAPI / HTTPX client / SQLite / psutil)
 
 ## AI Runtime
-- Ollama
-
----
-
-# 📁 Project Structure
-
-```bash
-Offline_AI_Assistant/
-│
-├── backend/
-│   ├── app.py
-│   ├── requirements.txt
-│   └── routes/
-│
-├── frontend/
-│   ├── index.html
-│   ├── style.css
-│   ├── script.js
-│   └── assets/
-│
-│
-├── README.md
-└── .gitignore
-```
+- Ollama (Local LLM Daemon)
 
 ---
 
@@ -93,35 +108,32 @@ ollama --version
 Example:
 
 ```bash
-ollama pull mistral
-```
-
-Other supported models:
-
-```bash
-ollama pull llama2
-ollama pull phi3
-ollama pull gemma
+ollama pull qwen2.5-coder:7b
+# or lighter models:
+ollama pull qwen2.5:1.5b
+ollama pull mistral:7b
 ```
 
 ---
 
-# ⚙️ Backend Setup
-
-## Using Python
+# ⚙️ Environment Setup
 
 ### Create Virtual Environment
 
 ```bash
-python -m venv myvenv
+python -m venv .venv
 ```
 
 ### Activate Virtual Environment
 
-### Windows
-
+**Windows:**
 ```bash
-myvenv\Scripts\activate
+.venv\Scripts\activate
+```
+
+**macOS / Linux:**
+```bash
+source .venv/bin/activate
 ```
 
 ### Install Dependencies
@@ -130,129 +142,30 @@ myvenv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Start Backend
-
-```bash
-python app.py
-```
-
 ---
 
-# 🌐 Frontend Setup
+# ▶️ Running the Application
 
-Open:
-
+### Option A: Running LocalMind (Streamlit - Recommended)
 ```bash
-frontend/index.html
+streamlit run app.py
 ```
 
-or run using Live Server extension in VS Code.
-
----
-
-# 🔌 Connect Frontend to Backend
-
-In `script.js` update backend URL if needed:
-
-```javascript
-const API_URL = "http://localhost:5000/chat";
-```
-
----
-
-# ▶️ Running the Project
-
-## Step 1
-
-Start Ollama:
-
+### Option B: Running Legacy FastAPI Backend
 ```bash
-ollama serve
+uvicorn backend.main:app --reload --port 8000
 ```
+Open `frontend/index.html` in your browser.
 
-## Step 2
-
-Run backend server:
-
-```bash
-python app.py
-```
-
-## Step 3
-
-Open frontend in browser.
-
----
-
-# 🧠 Example Ollama API Request
-
-```python
-import requests
-
-response = requests.post(
-    "http://localhost:11434/api/generate",
-    json={
-        "model": "mistral",
-        "prompt": "Hello"
-    }
-)
-
-print(response.json())
-```
-
----
-
-# 🎨 UI Features
-
-- ChatGPT-like layout
-- Sidebar navigation
-- Smooth scrolling
-- Typing animation
-- Markdown-style messages
-- Mobile responsive UI
-- Dynamic chat rendering
-
-<!-- ---
-
-# 📸 Screenshots
-
-## Main Interface
-
-Add screenshots inside:
-
-```bash
-screenshots/
-```
-
-Example:
-
-```bash
-screenshots/main-ui.png
-```
-
---- -->
-
-# 📌 Future Improvements
-
-- ✅ Voice input support
-- ✅ File processing
-- ✅ Chat export
-- ✅ Markdown rendering
-- ✅ Streaming responses
-- ✅ Local database storage
-- ✅ Multi-chat sessions
-- ✅ Syntax highlighting
-- ✅ Electron desktop app
-- ✅️ Multiple devices UI
 ---
 
 # 🛡️ Privacy
 
 This project is completely offline.
 
-- No cloud API
-- No data collection
-- No internet dependency
+- No cloud API required
+- No data collection or tracking
+- No internet dependency for local models
 - Full local execution
 
 Your chats never leave your device.
@@ -261,9 +174,7 @@ Your chats never leave your device.
 
 # 🤝 Contributing
 
-Pull requests are welcome.
-
-For major changes, open an issue first to discuss improvements.
+Pull requests are welcome. For major changes, open an issue first to discuss improvements.
 
 ---
 
@@ -273,26 +184,7 @@ This project is licensed under the MIT License.
 
 ---
 
-# ⭐ Support
-
-If you like this project:
-
-- ⭐ Star the repository
-- 🍴 Fork the project
-- 🧠 Improve the UI
-- 🚀 Add new features
-
----
-
 # 👨‍💻 Author
 
 ### Anuj Wagmore
-
-GitHub:
-https://github.com/Anuj04432
-
----
-
-# 🔥 Offline AI Powered by Ollama
-
-Run powerful AI models locally with complete privacy and zero API costs.
+GitHub: https://github.com/Anuj04432
