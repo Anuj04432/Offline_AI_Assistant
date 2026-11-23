@@ -33,8 +33,22 @@ from core.ollama_client import (
     stream_model_pull,
     DEFAULT_OLLAMA_URL,
 )
+from core.db import (
+    init_db,
+    create_or_update_conversation,
+    get_all_conversations,
+    get_conversation_messages,
+    save_message,
+    delete_conversation_by_id,
+    get_all_memories,
+    add_user_memory,
+    delete_user_memory,
+)
 
 app = FastAPI(title="LocalMind Offline AI Assistant")
+
+# Initialize SQLite database on startup
+init_db()
 
 # CORS middleware for local development
 app.add_middleware(
@@ -45,13 +59,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory session store
-# sessions = { "session_id": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}] }
-sessions: Dict[str, List[dict]] = {}
-
 DEFAULT_MODEL = "qwen2.5-coder:7b"
-SYSTEM_PROMPT = (
-    "You are a helpful, knowledgeable, and concise offline AI assistant. "
+BASE_SYSTEM_PROMPT = (
+    "You are LocalMind, a knowledgeable, helpful, and concise offline AI assistant. "
     "Provide direct, clear, and well-structured answers."
 )
 
@@ -65,6 +75,11 @@ class ChatRequest(BaseModel):
 
 class PullRequest(BaseModel):
     model: str
+
+
+class MemoryRequest(BaseModel):
+    fact: str
+    category: Optional[str] = "general"
 
 
 # =====================================================================
@@ -139,45 +154,71 @@ async def pull_model_endpoint(request: PullRequest):
 
 
 # =====================================================================
-# CHAT SESSIONS & STREAMING
+# PERSISTENT CHAT SESSIONS & STREAMING (SQLITE)
 # =====================================================================
 
 @app.get("/api/sessions")
 @app.get("/sessions")
-async def get_sessions():
-    """Return active chat sessions (newest first)."""
-    session_list = []
-    for sid, messages in sessions.items():
-        if messages:
-            first_user_msg = next((m["content"] for m in messages if m["role"] == "user"), "Conversation")
-            title = first_user_msg[:32] + ("..." if len(first_user_msg) > 32 else "")
-            session_list.append({"session_id": sid, "title": title})
-    return {"sessions": list(reversed(session_list))}
+def get_sessions():
+    """Return active chat sessions from SQLite database (newest first)."""
+    convs = get_all_conversations()
+    return {"sessions": [{"session_id": c["id"], "title": c["title"], "model": c["model_name"]} for c in convs]}
 
 
 @app.get("/api/sessions/{session_id}")
 @app.get("/sessions/{session_id}")
-async def get_session_history(session_id: str):
-    """Return full message history for a given session."""
-    if session_id in sessions:
-        return {"history": sessions[session_id]}
-    raise HTTPException(status_code=404, detail="Session not found")
+def get_session_history(session_id: str):
+    """Return full message history from SQLite for a given session."""
+    msgs = get_conversation_messages(session_id)
+    return {"history": [{"role": m["role"], "content": m["content"]} for m in msgs]}
 
 
 @app.delete("/api/sessions/{session_id}")
-async def delete_session(session_id: str):
-    """Delete a session from in-memory history."""
-    if session_id in sessions:
-        del sessions[session_id]
+def delete_session(session_id: str):
+    """Delete a session and all its messages from SQLite."""
+    deleted = delete_conversation_by_id(session_id)
+    if deleted:
         return {"status": "deleted", "session_id": session_id}
     raise HTTPException(status_code=404, detail="Session not found")
 
+
+# =====================================================================
+# PERSISTENT LONG-TERM MEMORIES (FRONTIER MEMORY)
+# =====================================================================
+
+@app.get("/api/memories")
+def list_memories():
+    """Retrieve all persistent memories about the user."""
+    return {"memories": get_all_memories()}
+
+
+@app.post("/api/memories")
+def create_memory(req: MemoryRequest):
+    """Store a new long-term persistent fact about the user."""
+    if not req.fact.strip():
+        raise HTTPException(status_code=400, detail="Memory fact cannot be empty")
+    created = add_user_memory(req.fact, req.category or "general")
+    return {"status": "created", "memory": created}
+
+
+@app.delete("/api/memories/{memory_id}")
+def remove_memory(memory_id: str):
+    """Delete a long-term memory."""
+    success = delete_user_memory(memory_id)
+    if success:
+        return {"status": "deleted", "memory_id": memory_id}
+    raise HTTPException(status_code=404, detail="Memory not found")
+
+
+# =====================================================================
+# CHAT ENDPOINT WITH CONTEXT & FRONTIER MEMORY INJECTION
+# =====================================================================
 
 @app.post("/api/chat")
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     """
-    Send a message to the selected local model with conversation context.
+    Send a message to the selected local model with conversation context and persistent frontier memories.
     Streams token chunks via Server-Sent Events (SSE).
     """
     if not request.message or not request.message.strip():
@@ -186,15 +227,37 @@ async def chat_endpoint(request: ChatRequest):
     model = request.model or DEFAULT_MODEL
     session_id = request.session_id
 
-    if not session_id or session_id not in sessions:
+    # Create new session if none provided
+    is_new_session = False
+    if not session_id:
         session_id = str(uuid.uuid4())
-        sessions[session_id] = []
+        is_new_session = True
 
-    # Append user turn
-    sessions[session_id].append({"role": "user", "content": request.message.strip()})
+    # Generate a clean title for the conversation from the first message
+    if is_new_session:
+        clean_title = request.message.strip()[:32] + ("..." if len(request.message.strip()) > 32 else "")
+        create_or_update_conversation(session_id, clean_title, model)
 
-    # Prepare context
-    history_payload = [{"role": "system", "content": SYSTEM_PROMPT}] + sessions[session_id]
+    # Save user message to SQLite database
+    save_message(session_id, "user", request.message.strip())
+
+    # Fetch full history for this session from SQLite
+    history_records = get_conversation_messages(session_id)
+    conversation_turns = [{"role": r["role"], "content": r["content"]} for r in history_records]
+
+    # Inject persistent user memories into system prompt (Frontier-style memory)
+    memories = get_all_memories()
+    memory_instruction = ""
+    if memories:
+        memory_items = "\n".join([f"- {m['fact']}" for m in memories])
+        memory_instruction = (
+            f"\n\n[Persistent Long-Term Memories about the User & Context]:\n"
+            f"{memory_items}\n"
+            f"Use these memories to maintain context, preferences, and continuity across chats."
+        )
+
+    full_system_prompt = f"{BASE_SYSTEM_PROMPT}{memory_instruction}"
+    history_payload = [{"role": "system", "content": full_system_prompt}] + conversation_turns
 
     # Non-streaming fallback
     if request.stream is False:
@@ -205,7 +268,7 @@ async def chat_endpoint(request: ChatRequest):
             )
             data = resp.json()
             reply = data.get("message", {}).get("content", "")
-            sessions[session_id].append({"role": "assistant", "content": reply})
+            save_message(session_id, "assistant", reply)
             return {"response": reply, "session_id": session_id}
 
     # Streaming token generator (SSE format)
@@ -218,9 +281,9 @@ async def chat_endpoint(request: ChatRequest):
             full_reply.append(token)
             yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
 
-        # Record assistant reply in history
+        # Record assistant reply in SQLite database
         assistant_text = "".join(full_reply)
-        sessions[session_id].append({"role": "assistant", "content": assistant_text})
+        save_message(session_id, "assistant", assistant_text)
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(sse_stream(), media_type="text/event-stream")
@@ -260,7 +323,6 @@ async def upload_file(
     if not extracted_text.strip():
         raise HTTPException(status_code=400, detail="File is empty or contains no readable text")
 
-    # Truncate if excessively long for context
     extracted_text = extracted_text[:8000]
 
     system_instruction = (
@@ -268,11 +330,11 @@ async def upload_file(
         f"--- Document Content ---\n{extracted_text}"
     )
 
-    if not session_id or session_id not in sessions:
+    if not session_id:
         session_id = str(uuid.uuid4())
-        sessions[session_id] = []
+        create_or_update_conversation(session_id, f"Doc: {file.filename[:20]}", model)
 
-    sessions[session_id].append({"role": "user", "content": f"[Attached document: {file.filename}]"})
+    save_message(session_id, "user", f"[Attached document: {file.filename}]")
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
@@ -285,7 +347,7 @@ async def upload_file(
         )
         data = resp.json()
         reply = data.get("message", {}).get("content", "Document processed.")
-        sessions[session_id].append({"role": "assistant", "content": reply})
+        save_message(session_id, "assistant", reply)
         return {"response": reply, "session_id": session_id}
 
 
