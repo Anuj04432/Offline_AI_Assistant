@@ -21,7 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const newChatBtn = document.getElementById('newChatBtn');
     const historyList = document.getElementById('historyList');
     const modelSelect = document.getElementById('modelSelect');
-    const modelSelectSection = document.getElementById('modelSelectSection');
     const headerModelTitle = document.getElementById('headerModelTitle');
     const menuToggle = document.getElementById('menuToggle');
     const sidebar = document.getElementById('sidebar');
@@ -31,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const specsSummaryText = document.getElementById('specsSummaryText');
     const refreshBtn = document.getElementById('refreshBtn');
     const exploreModelsBtn = document.getElementById('exploreModelsBtn');
+    const backToChatBtn = document.getElementById('backToChatBtn');
 
     // View Containers
     const ollamaInstallView = document.getElementById('ollamaInstallView');
@@ -44,9 +44,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileUploadBtn = document.getElementById('fileUploadBtn');
     const hiddenFileInput = document.getElementById('hiddenFileInput');
 
+    // Filter tabs
+    const tabRecommended = document.getElementById('tabRecommended');
+    const tabAll = document.getElementById('tabAll');
+
+    // Memory Modal Elements
+    const manageMemoryBtn = document.getElementById('manageMemoryBtn');
+    const memoryModal = document.getElementById('memoryModal');
+    const closeMemoryModalBtn = document.getElementById('closeMemoryModalBtn');
+    const newMemoryInput = document.getElementById('newMemoryInput');
+    const saveMemoryBtn = document.getElementById('saveMemoryBtn');
+    const memoryList = document.getElementById('memoryList');
+
     let currentSessionId = null;
     let installedModels = [];
     let systemHardware = null;
+    let allCatalogModels = [];
+    let activeCatalogFilter = 'recommended';
     let isGenerating = false;
 
     // =====================================================================
@@ -61,8 +75,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const active = document.getElementById(viewId);
         if (active) {
-            active.style.display = (viewId === 'chatView') ? 'flex' : 'flex';
+            active.style.display = 'flex';
         }
+
+        // When switching back to chat, auto-scroll to bottom
+        if (viewId === 'chatView') {
+            scrollToBottom();
+        }
+    }
+
+    function scrollToBottom() {
+        requestAnimationFrame(() => {
+            if (chatContainer) {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        });
     }
 
     function setConnectionState(state, label) {
@@ -196,7 +223,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function renderHardwareAndRecommendations() {
         const specsGrid = document.getElementById('specsGrid');
-        const modelsGrid = document.getElementById('recommendedModelsGrid');
         const summaryText = document.getElementById('hardwareSummaryText');
 
         if (!systemHardware) {
@@ -225,78 +251,99 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
-        // Fetch and render model recommendations
+        // Fetch recommendations from backend
         try {
             const resp = await fetch(`${API_BASE}/api/recommendations`);
             const data = await resp.json();
 
             if (summaryText) {
-                summaryText.textContent = data.summary;
+                summaryText.innerHTML = `
+                    <strong>${data.summary}</strong><br>
+                    <span style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; display: inline-block;">
+                        <i class="fa-solid fa-circle-info"></i> Suitability badges are calculated dynamically by comparing each model's memory footprint against your ${systemHardware.ram_total_gb} GB RAM.
+                    </span>
+                `;
             }
 
-            if (modelsGrid && data.models) {
-                modelsGrid.innerHTML = '';
-                data.models.forEach(model => {
-                    const card = document.createElement('div');
-                    card.className = 'model-card';
+            allCatalogModels = data.models || [];
+            filterAndDisplayModels();
 
-                    const isAlreadyInstalled = installedModels.includes(model.id);
-
-                    card.innerHTML = `
-                        <div class="model-card-top">
-                            <div class="model-card-title">
-                                <h4>${model.name}</h4>
-                                <span class="badge badge-${model.badge_color}">${model.badge_label}</span>
-                            </div>
-                            <div class="model-meta-row">
-                                <span><i class="fa-solid fa-download"></i> ${model.download_size}</span>
-                                <span><i class="fa-solid fa-memory"></i> ${model.min_ram_gb}GB+ RAM</span>
-                                <span><i class="fa-solid fa-tag"></i> ${model.tag}</span>
-                            </div>
-                            <p class="model-desc">${model.description}</p>
-                        </div>
-
-                        <div class="model-card-actions">
-                            ${isAlreadyInstalled ? `
-                                <button class="btn secondary-btn" disabled style="opacity: 0.7; justify-content: center;">
-                                    <i class="fa-solid fa-check"></i> Already Installed
-                                </button>
-                            ` : `
-                                <button class="download-model-btn" data-model="${model.id}">
-                                    <i class="fa-solid fa-cloud-arrow-down"></i> Download Model (${model.download_size})
-                                </button>
-                                <div class="download-progress-container" id="prog-${model.id.replace(/[:.]/g, '-')}" style="display: none;">
-                                    <div class="download-progress-bar">
-                                        <div class="progress-fill" style="width: 0%;"></div>
-                                    </div>
-                                    <div class="progress-text">Preparing download...</div>
-                                </div>
-                            `}
-
-                            <div class="copy-cmd-row">
-                                <code>${model.pull_command}</code>
-                                <button class="copy-btn" title="Copy CLI Command" onclick="navigator.clipboard.writeText('${model.pull_command}')">
-                                    <i class="fa-regular fa-copy"></i>
-                                </button>
-                            </div>
-                        </div>
-                    `;
-
-                    // Wire download button
-                    const dlBtn = card.querySelector('.download-model-btn');
-                    if (dlBtn) {
-                        dlBtn.addEventListener('click', () => {
-                            const progContainer = card.querySelector(`#prog-${model.id.replace(/[:.]/g, '-')}`);
-                            downloadModel(model.id, dlBtn, progContainer);
-                        });
-                    }
-
-                    modelsGrid.appendChild(card);
-                });
-            }
         } catch (err) {
             console.error('Failed to fetch recommendations:', err);
         }
+    }
+
+    function filterAndDisplayModels() {
+        const modelsGrid = document.getElementById('recommendedModelsGrid');
+        if (!modelsGrid) return;
+
+        let filtered = allCatalogModels;
+        if (activeCatalogFilter === 'recommended') {
+            filtered = allCatalogModels.filter(m => m.suitability === 'optimal' || m.suitability === 'compatible');
+        }
+
+        modelsGrid.innerHTML = '';
+        filtered.forEach(model => {
+            const card = document.createElement('div');
+            card.className = 'model-card';
+
+            const isAlreadyInstalled = installedModels.includes(model.id);
+            const userRam = systemHardware ? systemHardware.ram_total_gb : 8.0;
+
+            card.innerHTML = `
+                <div class="model-card-top">
+                    <div class="model-card-title">
+                        <h4>${model.name}</h4>
+                        <span class="badge badge-${model.badge_color}">${model.badge_label}</span>
+                    </div>
+                    <div class="model-meta-row">
+                        <span><i class="fa-solid fa-download"></i> ${model.download_size}</span>
+                        <span><i class="fa-solid fa-memory"></i> ${model.min_ram_gb}GB+ RAM</span>
+                        <span><i class="fa-solid fa-tag"></i> ${model.tag}</span>
+                    </div>
+                    <p class="model-desc">${model.description}</p>
+                    <div style="margin-top: 10px; font-size: 11px; font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-color); padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <i class="fa-solid fa-calculator"></i> RAM Math: Requires ${model.recommended_ram_gb}GB | Your PC: ${userRam}GB (${model.suitability.toUpperCase()})
+                    </div>
+                </div>
+
+                <div class="model-card-actions">
+                    ${isAlreadyInstalled ? `
+                        <button class="btn secondary-btn" disabled style="opacity: 0.7; justify-content: center;">
+                            <i class="fa-solid fa-check"></i> Already Installed
+                        </button>
+                    ` : `
+                        <button class="download-model-btn" data-model="${model.id}">
+                            <i class="fa-solid fa-cloud-arrow-down"></i> Download Model (${model.download_size})
+                        </button>
+                        <div class="download-progress-container" id="prog-${model.id.replace(/[:.]/g, '-')}" style="display: none;">
+                            <div class="download-progress-bar">
+                                <div class="progress-fill" style="width: 0%;"></div>
+                            </div>
+                            <div class="progress-text">Preparing download...</div>
+                        </div>
+                    `}
+
+                    <div class="copy-cmd-row">
+                        <code>${model.pull_command}</code>
+                        <button class="copy-btn" title="Copy CLI Command" onclick="navigator.clipboard.writeText('${model.pull_command}')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // Wire download button
+            const dlBtn = card.querySelector('.download-model-btn');
+            if (dlBtn) {
+                dlBtn.addEventListener('click', () => {
+                    const progContainer = card.querySelector(`#prog-${model.id.replace(/[:.]/g, '-')}`);
+                    downloadModel(model.id, dlBtn, progContainer);
+                });
+            }
+
+            modelsGrid.appendChild(card);
+        });
     }
 
     // =====================================================================
@@ -332,7 +379,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
-                buffer = lines.pop(); // keep last unfinished line
+                buffer = lines.pop();
 
                 for (const line of lines) {
                     if (!line.trim()) continue;
@@ -375,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =====================================================================
-    // CHAT & SESSIONS
+    // CHAT SESSIONS & NAVIGATION
     // =====================================================================
 
     async function fetchSessions() {
@@ -407,6 +454,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await resp.json();
 
             currentSessionId = sessionId;
+            showView('chatView'); // Explicitly transition to chat view
+
             welcomeScreen.style.display = 'none';
             messagesWrapper.style.display = 'flex';
             messagesWrapper.innerHTML = '';
@@ -417,6 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
+            scrollToBottom();
             fetchSessions();
             if (window.innerWidth <= 768) sidebar.classList.remove('open');
         } catch (err) {
@@ -445,7 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         messagesWrapper.appendChild(messageDiv);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        scrollToBottom();
         return messageDiv;
     }
 
@@ -459,7 +509,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         messagesWrapper.appendChild(messageDiv);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        scrollToBottom();
         return messageDiv.querySelector('.message-content');
     }
 
@@ -525,7 +575,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else if (parsed.type === 'token') {
                             fullResponse += parsed.token;
                             contentEl.innerHTML = parseMarkdown(fullResponse) + '<span class="typing-cursor">▋</span>';
-                            chatContainer.scrollTop = chatContainer.scrollHeight;
+                            scrollToBottom();
                         }
                     } catch (e) {
                         // ignore partial event parsing
@@ -535,7 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Finished streaming: remove cursor
             contentEl.innerHTML = parseMarkdown(fullResponse);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            scrollToBottom();
             fetchSessions();
 
         } catch (err) {
@@ -564,7 +614,64 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =====================================================================
-    // EVENT LISTENERS
+    // PERSISTENT FRONTIER MEMORY MANAGEMENT
+    // =====================================================================
+
+    async function loadMemories() {
+        try {
+            const resp = await fetch(`${API_BASE}/api/memories`);
+            const data = await resp.json();
+            memoryList.innerHTML = '';
+
+            if (data.memories && data.memories.length > 0) {
+                data.memories.forEach(mem => {
+                    const item = document.createElement('div');
+                    item.className = 'memory-item';
+                    item.innerHTML = `
+                        <span>${mem.fact}</span>
+                        <button class="memory-del-btn" title="Delete memory" data-id="${mem.id}">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    `;
+                    item.querySelector('.memory-del-btn').addEventListener('click', async () => {
+                        await deleteMemory(mem.id);
+                    });
+                    memoryList.appendChild(item);
+                });
+            } else {
+                memoryList.innerHTML = '<div class="empty-memory">No memories saved yet. Add a preference above to test cross-session memory!</div>';
+            }
+        } catch (err) {
+            console.error('Failed to load memories:', err);
+        }
+    }
+
+    async function addMemory(fact) {
+        if (!fact.trim()) return;
+        try {
+            await fetch(`${API_BASE}/api/memories`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fact: fact.trim() }),
+            });
+            newMemoryInput.value = '';
+            await loadMemories();
+        } catch (err) {
+            console.error('Failed to save memory:', err);
+        }
+    }
+
+    async function deleteMemory(memId) {
+        try {
+            await fetch(`${API_BASE}/api/memories/${memId}`, { method: 'DELETE' });
+            await loadMemories();
+        } catch (err) {
+            console.error('Failed to delete memory:', err);
+        }
+    }
+
+    // =====================================================================
+    // EVENT LISTENERS & WIRING
     // =====================================================================
 
     messageInput.addEventListener('input', function() {
@@ -612,11 +719,70 @@ document.addEventListener('DOMContentLoaded', () => {
     if (retryServiceBtn) retryServiceBtn.addEventListener('click', checkProviderStatus);
     if (refreshBtn) refreshBtn.addEventListener('click', checkProviderStatus);
 
+    // Hardware Hub Navigation
     if (exploreModelsBtn) {
         exploreModelsBtn.addEventListener('click', async () => {
             showView('noModelsView');
             await renderHardwareAndRecommendations();
             if (window.innerWidth <= 768) sidebar.classList.remove('open');
+        });
+    }
+
+    if (backToChatBtn) {
+        backToChatBtn.addEventListener('click', () => {
+            showView('chatView');
+        });
+    }
+
+    // Catalog filter tabs
+    if (tabRecommended && tabAll) {
+        tabRecommended.addEventListener('click', () => {
+            tabRecommended.classList.add('active');
+            tabAll.classList.remove('active');
+            activeCatalogFilter = 'recommended';
+            filterAndDisplayModels();
+        });
+
+        tabAll.addEventListener('click', () => {
+            tabAll.classList.add('active');
+            tabRecommended.classList.remove('active');
+            activeCatalogFilter = 'all';
+            filterAndDisplayModels();
+        });
+    }
+
+    // Memory Modal Wiring
+    if (manageMemoryBtn && memoryModal) {
+        manageMemoryBtn.addEventListener('click', async () => {
+            memoryModal.style.display = 'flex';
+            await loadMemories();
+            if (window.innerWidth <= 768) sidebar.classList.remove('open');
+        });
+    }
+
+    if (closeMemoryModalBtn && memoryModal) {
+        closeMemoryModalBtn.addEventListener('click', () => {
+            memoryModal.style.display = 'none';
+        });
+    }
+
+    if (memoryModal) {
+        memoryModal.addEventListener('click', (e) => {
+            if (e.target === memoryModal) {
+                memoryModal.style.display = 'none';
+            }
+        });
+    }
+
+    if (saveMemoryBtn && newMemoryInput) {
+        saveMemoryBtn.addEventListener('click', () => {
+            addMemory(newMemoryInput.value);
+        });
+
+        newMemoryInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                addMemory(newMemoryInput.value);
+            }
         });
     }
 
