@@ -12,7 +12,11 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
-import PyPDF2
+
+try:
+    import PyPDF2
+except ImportError:
+    PyPDF2 = None
 
 # Add parent directory to sys.path if running directly
 current_dir = Path(__file__).resolve().parent
@@ -240,6 +244,8 @@ async def upload_file(
     extracted_text = ""
 
     if file.filename.lower().endswith(".pdf"):
+        if PyPDF2 is None:
+            raise HTTPException(status_code=500, detail="PyPDF2 is not installed on the server. Run 'pip install PyPDF2' to process PDFs.")
         try:
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
             for page in pdf_reader.pages:
