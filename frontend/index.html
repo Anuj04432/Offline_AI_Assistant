@@ -55,8 +55,11 @@
             </div>
 
             <div class="sidebar-footer">
-                <button class="footer-btn" id="exploreModelsBtn" title="Explore recommended models">
-                    <i class="fa-solid fa-cubes"></i> <span>Hardware & Models</span>
+                <button class="footer-btn" id="manageMemoryBtn" title="Frontier-style persistent memory">
+                    <i class="fa-solid fa-brain"></i> <span>Memory Manager</span>
+                </button>
+                <button class="footer-btn" id="exploreModelsBtn" title="Explore recommended models" style="margin-top: 6px;">
+                    <i class="fa-solid fa-microchip"></i> <span>Hardware & Models</span>
                 </button>
             </div>
         </aside>
@@ -147,6 +150,11 @@
             <!-- VIEW 3: HARDWARE PROFILER & RECOMMENDED MODELS -->
             <section class="onboarding-view" id="noModelsView" style="display: none;">
                 <div class="hardware-hub">
+                    <div class="hardware-top-bar">
+                        <button class="back-to-chat-btn" id="backToChatBtn">
+                            <i class="fa-solid fa-arrow-left"></i> Back to Chat
+                        </button>
+                    </div>
                     <div class="hardware-header">
                         <h2>Hardware Profiler & Model Recommendations</h2>
                         <p id="hardwareSummaryText">Analyzing your device capacity...</p>
@@ -158,8 +166,20 @@
 
                     <div class="catalog-section">
                         <div class="catalog-header">
-                            <h3><i class="fa-solid fa-layer-group"></i> Recommended Models for Your Hardware</h3>
-                            <span class="catalog-sub">Selected based on your available memory and processor power</span>
+                            <div>
+                                <h3><i class="fa-solid fa-layer-group"></i> Models Scored for Your Hardware</h3>
+                                <span class="catalog-sub">Evaluated dynamically based on your available memory and processor power</span>
+                            </div>
+                        </div>
+
+                        <!-- Filter Tabs -->
+                        <div class="catalog-filter-tabs">
+                            <button class="filter-tab active" data-filter="recommended" id="tabRecommended">
+                                <i class="fa-solid fa-star"></i> Recommended for Your Device
+                            </button>
+                            <button class="filter-tab" data-filter="all" id="tabAll">
+                                <i class="fa-solid fa-list"></i> All Catalog Models
+                            </button>
                         </div>
 
                         <div class="models-grid" id="recommendedModelsGrid">
@@ -204,6 +224,32 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <!-- MODAL: PERSISTENT MEMORY MANAGER (FRONTIER MEMORY) -->
+    <div class="modal-backdrop" id="memoryModal" style="display: none;">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-brain" style="color: var(--accent);"></i> Frontier Memory Manager</h3>
+                <button class="close-modal-btn" id="closeMemoryModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">
+                    These are persistent memories stored in your local SQLite database (<code>localmind.db</code>). LocalMind automatically injects these into every chat prompt so the AI remembers your preferences across sessions.
+                </p>
+
+                <div class="add-memory-row">
+                    <input type="text" id="newMemoryInput" class="memory-input" placeholder="e.g. My name is Alice, I prefer Python, keep explanations short...">
+                    <button class="add-memory-btn" id="saveMemoryBtn">
+                        <i class="fa-solid fa-plus"></i> Remember
+                    </button>
+                </div>
+
+                <div class="memory-list" id="memoryList">
+                    <!-- Populated dynamically via script.js -->
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="script.js"></script>
