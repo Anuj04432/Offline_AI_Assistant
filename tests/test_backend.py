@@ -1,11 +1,22 @@
-"""Unit tests for backend diagnostics, recommender, and FastAPI endpoints."""
+"""Unit tests for backend diagnostics, recommender, SQLite database, memory, and FastAPI endpoints."""
 
 import pytest
+import uuid
 from fastapi.testclient import TestClient
 
 from backend.core.system_info import get_system_hardware, determine_hardware_tier
 from backend.core.recommender import get_recommendations, MODEL_CATALOG
 from backend.core.ollama_client import check_ollama_installation
+from backend.core.db import (
+    create_or_update_conversation,
+    get_all_conversations,
+    get_conversation_messages,
+    save_message,
+    delete_conversation_by_id,
+    add_user_memory,
+    get_all_memories,
+    delete_user_memory,
+)
 from backend.main import app
 
 
@@ -44,7 +55,6 @@ def test_recommender():
     assert "summary" in result
     assert len(result["models"]) == len(MODEL_CATALOG)
 
-    # 1B and 3B models should be optimal for 16GB
     small_model = next(m for m in result["models"] if m["id"] == "llama3.2:3b")
     assert small_model["suitability"] == "optimal"
     assert small_model["badge_color"] == "green"
@@ -56,6 +66,42 @@ def test_ollama_binary_detection():
     assert isinstance(installed, bool)
     if installed:
         assert path is not None
+
+
+def test_db_persistence_and_messages():
+    """Verify SQLite persistence for conversations and messages."""
+    test_id = str(uuid.uuid4())
+    create_or_update_conversation(test_id, "Test Chat Session", "qwen2.5:3b")
+    save_message(test_id, "user", "Hello SQLite")
+    save_message(test_id, "assistant", "Hello! Stored safely.")
+
+    convs = get_all_conversations()
+    found = next((c for c in convs if c["id"] == test_id), None)
+    assert found is not None
+    assert found["title"] == "Test Chat Session"
+
+    msgs = get_conversation_messages(test_id)
+    assert len(msgs) == 2
+    assert msgs[0]["content"] == "Hello SQLite"
+    assert msgs[1]["content"] == "Hello! Stored safely."
+
+    # Clean up
+    delete_conversation_by_id(test_id)
+
+
+def test_db_frontier_memories():
+    """Verify long-term persistent user memories in SQLite."""
+    mem = add_user_memory("User develops in Python and TypeScript", "skills")
+    assert "id" in mem
+    assert mem["fact"] == "User develops in Python and TypeScript"
+
+    all_mems = get_all_memories()
+    found = next((m for m in all_mems if m["id"] == mem["id"]), None)
+    assert found is not None
+
+    # Clean up
+    delete_user_memory(mem["id"])
+    assert not any(m["id"] == mem["id"] for m in get_all_memories())
 
 
 def test_api_status_endpoint():
@@ -97,3 +143,28 @@ def test_api_models_endpoint():
     data = response.json()
     assert "models" in data
     assert isinstance(data["models"], list)
+
+
+def test_api_memories_endpoints():
+    """Test /api/memories GET, POST, DELETE endpoints."""
+    client = TestClient(app)
+
+    # 1. Create memory
+    post_res = client.post("/api/memories", json={"fact": "User prefers concise answers", "category": "preferences"})
+    assert post_res.status_code == 200
+    created = post_res.json()["memory"]
+    mem_id = created["id"]
+
+    # 2. Get memories
+    get_res = client.get("/api/memories")
+    assert get_res.status_code == 200
+    mems = get_res.json()["memories"]
+    assert any(m["id"] == mem_id for m in mems)
+
+    # 3. Delete memory
+    del_res = client.delete(f"/api/memories/{mem_id}")
+    assert del_res.status_code == 200
+
+    # 4. Confirm deleted
+    get_res2 = client.get("/api/memories")
+    assert not any(m["id"] == mem_id for m in get_res2.json()["memories"])
