@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MY CHATBOT</title>
+    <title>LocalMind — Offline AI Assistant</title>
     <link rel="stylesheet" href="style.css">
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts: IBM Plex Sans (body) + IBM Plex Mono (labels/utility) -->
+    <!-- Google Fonts: IBM Plex Sans + IBM Plex Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Highlight.js CSS for Code Blocks -->
@@ -21,12 +21,15 @@
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
 
-            <!-- Signal panel: live connection status to the Ollama backend -->
+            <!-- Signal panel: live connection status to local Ollama -->
             <div class="signal-panel">
                 <div class="signal-row">
                     <span class="led" id="connectionLed"></span>
                     <span class="signal-label">OLLAMA</span>
-                    <span class="signal-status" id="connectionStatus">CONNECTING</span>
+                    <span class="signal-status" id="connectionStatus">CHECKING...</span>
+                </div>
+                <div class="system-specs-pill" id="systemSpecsPill" style="display: none;">
+                    <i class="fa-solid fa-microchip"></i> <span id="specsSummaryText">Probing hardware...</span>
                 </div>
             </div>
 
@@ -34,32 +37,31 @@
                 <i class="fa-solid fa-plus"></i> New chat
             </button>
 
-            <div class="sidebar-section">
-                <p class="section-label">▸ model</p>
+            <div class="sidebar-section" id="modelSelectSection">
+                <p class="section-label">▸ active model</p>
                 <div class="select-wrapper">
                     <select id="modelSelect">
-                        <option value="">loading models…</option>
+                        <option value="">scanning models…</option>
                     </select>
                     <i class="fa-solid fa-chevron-down select-icon"></i>
                 </div>
             </div>
 
             <div class="chat-history">
-                <p class="section-label">▸ log</p>
+                <p class="section-label">▸ conversations</p>
                 <ul class="history-list" id="historyList">
                     <div class="empty-log">No sessions logged yet</div>
                 </ul>
             </div>
 
             <div class="sidebar-footer">
-                <div class="user-profile">
-                    <div class="avatar">U</div>
-                    <span>Profile</span>
-                </div>
+                <button class="footer-btn" id="exploreModelsBtn" title="Explore recommended models">
+                    <i class="fa-solid fa-cubes"></i> <span>Hardware & Models</span>
+                </button>
             </div>
         </aside>
 
-        <!-- Main Chat Area -->
+        <!-- Main Content Area -->
         <main class="main-content">
             <!-- Header -->
             <header class="header">
@@ -67,43 +69,143 @@
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div class="header-model-title" id="headerModelTitle">
-                    loading… <span class="model-badge">—</span>
+                    LocalMind <span class="model-badge">Offline</span>
+                </div>
+                <div class="header-actions">
+                    <button class="header-btn" id="refreshBtn" title="Re-check status & models">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
                 </div>
             </header>
 
-            <!-- Chat Container -->
-            <div class="chat-container" id="chatContainer">
-                <!-- Welcome screen for new chat -->
-                <div class="welcome-screen" id="welcomeScreen">
-                    <div class="welcome-logo">&gt;_</div>
-                    <h1>Local model, no cloud, no leash.</h1>
-                    <p class="welcome-sub">Ask anything — it stays on this machine.</p>
+            <!-- VIEW 1: OLLAMA NOT INSTALLED -->
+            <section class="onboarding-view" id="ollamaInstallView" style="display: none;">
+                <div class="onboarding-card">
+                    <div class="card-icon warning-icon">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <h2>Ollama is Not Installed</h2>
+                    <p class="card-desc">
+                        LocalMind runs entirely on your device using <strong>Ollama</strong>. No internet or cloud subscription required.
+                    </p>
+                    
+                    <div class="steps-box">
+                        <div class="step-item">
+                            <span class="step-num">1</span>
+                            <span class="step-text">Download the official installer for Windows.</span>
+                        </div>
+                        <div class="step-item">
+                            <span class="step-num">2</span>
+                            <span class="step-text">Run <code>OllamaSetup.exe</code> and complete the setup.</span>
+                        </div>
+                        <div class="step-item">
+                            <span class="step-num">3</span>
+                            <span class="step-text">Once finished, click <strong>Re-check System</strong> below.</span>
+                        </div>
+                    </div>
+
+                    <div class="card-actions">
+                        <a href="https://ollama.com/download/windows" target="_blank" class="btn primary-btn">
+                            <i class="fa-solid fa-download"></i> Download Ollama (Windows)
+                        </a>
+                        <button class="btn secondary-btn" id="recheckInstallBtn">
+                            <i class="fa-solid fa-arrow-rotate-right"></i> Re-check System
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 2: OLLAMA INSTALLED BUT SERVICE STOPPED -->
+            <section class="onboarding-view" id="ollamaServiceView" style="display: none;">
+                <div class="onboarding-card">
+                    <div class="card-icon info-icon">
+                        <i class="fa-solid fa-power-off"></i>
+                    </div>
+                    <h2>Ollama Service is Stopped</h2>
+                    <p class="card-desc">
+                        Ollama is installed on your computer, but the background daemon is not currently active at <code>http://localhost:11434</code>.
+                    </p>
+
+                    <div class="command-box">
+                        <p class="box-label">Run this command in any terminal or launch Ollama from Windows Start menu:</p>
+                        <div class="code-snippet">
+                            <code>ollama serve</code>
+                            <button class="copy-btn" onclick="navigator.clipboard.writeText('ollama serve')">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card-actions">
+                        <button class="btn primary-btn" id="retryServiceBtn">
+                            <i class="fa-solid fa-bolt"></i> Retry Connection
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 3: HARDWARE PROFILER & RECOMMENDED MODELS -->
+            <section class="onboarding-view" id="noModelsView" style="display: none;">
+                <div class="hardware-hub">
+                    <div class="hardware-header">
+                        <h2>Hardware Profiler & Model Recommendations</h2>
+                        <p id="hardwareSummaryText">Analyzing your device capacity...</p>
+                        
+                        <div class="specs-grid" id="specsGrid">
+                            <!-- Injected dynamically: RAM, CPU, GPU, Tier -->
+                        </div>
+                    </div>
+
+                    <div class="catalog-section">
+                        <div class="catalog-header">
+                            <h3><i class="fa-solid fa-layer-group"></i> Recommended Models for Your Hardware</h3>
+                            <span class="catalog-sub">Selected based on your available memory and processor power</span>
+                        </div>
+
+                        <div class="models-grid" id="recommendedModelsGrid">
+                            <!-- Injected dynamically via script.js -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 4: MAIN CHAT VIEW -->
+            <section class="chat-view" id="chatView">
+                <div class="chat-container" id="chatContainer">
+                    <!-- Welcome screen for new chat -->
+                    <div class="welcome-screen" id="welcomeScreen">
+                        <div class="welcome-logo">&gt;_</div>
+                        <h1>Local model, zero cloud, 100% private.</h1>
+                        <p class="welcome-sub">Ask anything — your queries and data never leave this machine.</p>
+                        <div class="quick-tips">
+                            <span class="tip-pill"><i class="fa-solid fa-shield-halved"></i> 100% Offline</span>
+                            <span class="tip-pill"><i class="fa-solid fa-bolt"></i> Real-time Token Streaming</span>
+                            <span class="tip-pill"><i class="fa-solid fa-microchip"></i> Hardware-Aware</span>
+                        </div>
+                    </div>
+
+                    <!-- Messages will appear here -->
+                    <div class="messages-wrapper" id="messagesWrapper" style="display: none;"></div>
                 </div>
 
-                <!-- Messages will appear here -->
-                <div class="messages-wrapper" id="messagesWrapper" style="display: none;">
-                    <!-- Example messages will be added dynamically -->
+                <!-- Input Area -->
+                <div class="input-area">
+                    <div class="input-wrapper">
+                        <button class="icon-btn" id="fileUploadBtn" title="Attach PDF or TXT file">
+                            <i class="fa-solid fa-paperclip"></i>
+                        </button>
+                        <input type="file" id="hiddenFileInput" accept=".pdf,.txt" style="display: none;">
+                        <textarea id="messageInput" placeholder="Message the local model…" rows="1"></textarea>
+                        <button class="send-btn" id="sendBtn" disabled title="Send message">
+                            <span class="send-glyph">&gt;</span>
+                        </button>
+                    </div>
+                    <p class="disclaimer">Running locally on device — execution speed depends on your model & hardware.</p>
                 </div>
-            </div>
-
-            <!-- Input Area -->
-            <div class="input-area">
-                <div class="input-wrapper">
-                    <button class="icon-btn" id="fileUploadBtn" title="Attach file">
-                        <i class="fa-solid fa-paperclip"></i>
-                    </button>
-                    <textarea id="messageInput" placeholder="Message the local model…" rows="1"></textarea>
-                    <button class="icon-btn" id="voiceBtn" title="Voice input">
-                        <i class="fa-solid fa-microphone"></i>
-                    </button>
-                    <button class="send-btn" id="sendBtn" disabled title="Send">
-                        <span class="send-glyph">&gt;</span>
-                    </button>
-                </div>
-                <p class="disclaimer">Running fully offline — replies may take a moment.</p>
-            </div>
+            </section>
         </main>
     </div>
+
     <script src="script.js"></script>
 </body>
 </html>
